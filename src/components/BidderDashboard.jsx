@@ -5,10 +5,13 @@ const editableRowFields = [
   "client",
   "remarks",
   "type",
+  "workedHours",
+  "amtPerHour",
   "budget",
   "quoted",
   "interviews",
   "status",
+  "createdAt",
 ];
 
 const decimalOnly = (value) => {
@@ -28,14 +31,18 @@ function BidderDashboard({ user, onLogout }) {
     client: "",
     remarks: "",
     type: "Fixed",
+    workedHours: "",
+    amtPerHour: "",
     budget: "",
     quoted: "",
     interviews: "",
     status: "Open",
+    createdAt: "",
   });
   const [editingRowId, setEditingRowId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
   const [savingRowId, setSavingRowId] = useState(null);
+  const [selectedDailyBidDate, setSelectedDailyBidDate] = useState("");
   const [dailyBidDraft, setDailyBidDraft] = useState("");
   const [editingDailyBidId, setEditingDailyBidId] = useState(null);
   const [dailyBidEditDraft, setDailyBidEditDraft] = useState(null);
@@ -43,8 +50,11 @@ function BidderDashboard({ user, onLogout }) {
   const [isEditingTodayBid, setIsEditingTodayBid] = useState(false);
   const [showDailyHistory, setShowDailyHistory] = useState(false);
   const [selectedDailyBidMonth, setSelectedDailyBidMonth] = useState("");
+  const [filterMonth, setFilterMonth] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [toast, setToast] = useState(null);
   const toastTimerRef = useRef(null);
+  const dailyHistoryTableRef = useRef(null);
 
   useEffect(() => {
     fetchDashboard();
@@ -82,6 +92,16 @@ function BidderDashboard({ user, onLogout }) {
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const monthDay = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${monthDay}`;
+  };
+
+  const rowDateKey = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
   };
 
   const fetchDashboard = async () => {
@@ -143,12 +163,13 @@ function BidderDashboard({ user, onLogout }) {
   };
 
   const saveDailyBidCount = async () => {
+    const bidDate = selectedDailyBidDate || todayDateKey();
     const currentValue =
-      dailyBidDraft === "" && todayBidRecord
-        ? String(todayBidRecord.totalBids)
+      dailyBidDraft === "" && selectedBidRecord
+        ? String(selectedBidRecord.totalBids)
         : dailyBidDraft;
     const totalBids = Number(currentValue);
-    if (!Number.isInteger(totalBids) || totalBids < 0) return;
+    if (!bidDate || !Number.isInteger(totalBids) || totalBids < 0) return;
 
     try {
       setSavingDailyBid(true);
@@ -160,7 +181,7 @@ function BidderDashboard({ user, onLogout }) {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          date: todayDateKey(),
+          date: bidDate,
           totalBids,
         }),
       });
@@ -192,6 +213,20 @@ function BidderDashboard({ user, onLogout }) {
   const cancelEditDailyBid = () => {
     setEditingDailyBidId(null);
     setDailyBidEditDraft(null);
+  };
+
+  const openDailyBidMonth = (monthKey) => {
+    setSelectedDailyBidMonth(monthKey);
+    setSelectedDailyBidDate(`${monthKey}-01`);
+    setDailyBidDraft("");
+    setIsEditingTodayBid(false);
+    setShowDailyHistory(true);
+    window.setTimeout(() => {
+      dailyHistoryTableRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
   };
 
   const saveEditedDailyBid = async (id) => {
@@ -283,10 +318,13 @@ function BidderDashboard({ user, onLogout }) {
       client: "",
       remarks: "",
       type: "Fixed",
+      workedHours: "",
+      amtPerHour: "",
       budget: "",
       quoted: "",
       interviews: "",
       status: "Open",
+      createdAt: todayDateKey(),
     });
     setIsAdding(true);
   };
@@ -403,14 +441,15 @@ function BidderDashboard({ user, onLogout }) {
 
   const stats = bidder.stats;
   const dailyBidCounts = bidder.dailyBidCounts || [];
-  const todayBidRecord = dailyBidCounts.find(
-    (record) => record.date === todayDateKey(),
+  const activeDailyBidDate = selectedDailyBidDate || todayDateKey();
+  const selectedBidRecord = dailyBidCounts.find(
+    (record) => record.date === activeDailyBidDate,
   );
   const dailyBidInputValue =
-    dailyBidDraft === "" && todayBidRecord
-      ? String(todayBidRecord.totalBids)
+    dailyBidDraft === "" && selectedBidRecord
+      ? String(selectedBidRecord.totalBids)
       : dailyBidDraft;
-  const canEditTodayBid = !todayBidRecord || isEditingTodayBid;
+  const canEditSelectedBid = !selectedBidRecord || isEditingTodayBid;
   const totalBidsThisWeek = dailyBidCounts
     .filter(
       (record) =>
@@ -421,6 +460,7 @@ function BidderDashboard({ user, onLogout }) {
     (sum, record) => sum + Number(record.totalBids || 0),
     0,
   );
+  const selectedDailyBidMonthKey = activeDailyBidDate.slice(0, 7);
   const dailyBidMonths = dailyBidCounts.reduce((months, record) => {
     const monthKey = record.date.slice(0, 7);
     const existing = months.find((month) => month.key === monthKey);
@@ -435,11 +475,18 @@ function BidderDashboard({ user, onLogout }) {
       { key: monthKey, total: Number(record.totalBids || 0), days: 1 },
     ];
   }, []);
+  if (
+    selectedDailyBidMonthKey &&
+    !dailyBidMonths.some((month) => month.key === selectedDailyBidMonthKey)
+  ) {
+    dailyBidMonths.push({ key: selectedDailyBidMonthKey, total: 0, days: 0 });
+  }
+  dailyBidMonths.sort((a, b) => b.key.localeCompare(a.key));
   const activeDailyBidMonth = dailyBidMonths.some(
     (month) => month.key === selectedDailyBidMonth,
   )
     ? selectedDailyBidMonth
-    : dailyBidMonths[0]?.key || "";
+    : selectedDailyBidMonthKey || dailyBidMonths[0]?.key || "";
   const visibleDailyBidCounts = getMonthDays(
     activeDailyBidMonth,
     dailyBidCounts,
@@ -452,8 +499,46 @@ function BidderDashboard({ user, onLogout }) {
       return worthB - worthA;
     });
 
+  const rowMonths = [...new Set(bidder.rows.map(r => {
+    if (!r.createdAt) return null;
+    const d = new Date(r.createdAt);
+    if (isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }).filter(Boolean))].sort().reverse();
+
+  const formatMonthOption = (monthStr) => {
+    const [yyyy, mm] = monthStr.split('-');
+    const d = new Date(yyyy, parseInt(mm) - 1);
+    return d.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  };
+
+  const filteredRows = (filterMonth === "all" 
+    ? bidder.rows 
+    : bidder.rows.filter(r => {
+        if (!r.createdAt) return false;
+        const d = new Date(r.createdAt);
+        if (isNaN(d.getTime())) return false;
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === filterMonth;
+      }))
+    .filter(r => {
+      if (!searchQuery) return true;
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return r.client && r.client.toLowerCase().includes(q);
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  const uniqueClientNames = Array.from(
+    new Set((bidder.rows || []).map(r => r.client?.trim()).filter(Boolean))
+  ).sort();
+
   return (
     <div className="sheet">
+      <datalist id="client-suggestions">
+        {uniqueClientNames.map(name => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
       {toast && (
         <div
           className={`toast notice-${toast.kind}`}
@@ -530,18 +615,28 @@ function BidderDashboard({ user, onLogout }) {
         </div>
         <h2 className="sec-title">My bids by day</h2>
         <p className="sec-note">
-          Enter today&apos;s bids. Weekly count resets every Monday morning.
+          Enter bids for any day. Weekly count resets every Monday morning.
         </p>
 
         <div className="daily-bids-panel">
           <div className="daily-tile daily-today">
             <div>
-              <div className="s-lab">Add today&apos;s bids</div>
+              <div className="s-lab">Add bids by date</div>
               <div className="daily-today-row">
-                <div className="daily-date">
-                  {formatDailyDate(todayDateKey())}
-                </div>
-                {canEditTodayBid ? (
+                <input
+                  className="f daily-date-input"
+                  type="date"
+                  value={activeDailyBidDate}
+                  onChange={(e) => {
+                    const nextDate = e.target.value;
+                    setSelectedDailyBidDate(nextDate);
+                    setSelectedDailyBidMonth(nextDate.slice(0, 7));
+                    setDailyBidDraft("");
+                    setIsEditingTodayBid(false);
+                  }}
+                  disabled={savingDailyBid}
+                />
+                {canEditSelectedBid ? (
                   <input
                     className="f daily-count-input"
                     type="number"
@@ -558,12 +653,12 @@ function BidderDashboard({ user, onLogout }) {
                   </div>
                 )}
                 <div className="daily-today-actions">
-                  {todayBidRecord && !isEditingTodayBid ? (
+                  {selectedBidRecord && !isEditingTodayBid ? (
                     <button
                       className="btn mini"
                       type="button"
                       onClick={() => {
-                        setDailyBidDraft(String(todayBidRecord.totalBids));
+                        setDailyBidDraft(String(selectedBidRecord.totalBids));
                         setIsEditingTodayBid(true);
                       }}
                       disabled={savingDailyBid}
@@ -575,8 +670,8 @@ function BidderDashboard({ user, onLogout }) {
                       <button
                         className="icon-btn save"
                         type="button"
-                        title="Save today's bids"
-                        aria-label="Save today's bids"
+                        title="Save bids for selected date"
+                        aria-label="Save bids for selected date"
                         onClick={saveDailyBidCount}
                         disabled={savingDailyBid || dailyBidInputValue === ""}
                       >
@@ -584,12 +679,12 @@ function BidderDashboard({ user, onLogout }) {
                           <path d="M5 12.5l4 4L19 6.5" />
                         </svg>
                       </button>
-                      {todayBidRecord && (
+                      {selectedBidRecord && (
                         <button
                           className="icon-btn cancel"
                           type="button"
-                          title="Cancel today's bid update"
-                          aria-label="Cancel today's bid update"
+                          title="Cancel bid update"
+                          aria-label="Cancel bid update"
                           onClick={() => {
                             setDailyBidDraft("");
                             setIsEditingTodayBid(false);
@@ -644,11 +739,7 @@ function BidderDashboard({ user, onLogout }) {
           </button>
         </div>
 
-        {showDailyHistory && dailyBidCounts.length === 0 && (
-          <div className="daily-empty">No bid history yet.</div>
-        )}
-
-        {showDailyHistory && dailyBidCounts.length > 0 && (
+        {showDailyHistory && (
           <div className="daily-history-wrap">
             <div className="daily-history-title">Bid history</div>
             <div className="daily-months" aria-label="Bid history months">
@@ -657,7 +748,8 @@ function BidderDashboard({ user, onLogout }) {
                   key={month.key}
                   type="button"
                   className={`daily-month-card${activeDailyBidMonth === month.key ? " active" : ""}`}
-                  onClick={() => setSelectedDailyBidMonth(month.key)}
+                  onClick={() => openDailyBidMonth(month.key)}
+                  aria-label={`Open daily bid history for ${formatMonthLabel(month.key)}`}
                 >
                   <span>{formatMonthLabel(month.key)}</span>
                   <b>{month.total.toLocaleString()}</b>
@@ -667,15 +759,21 @@ function BidderDashboard({ user, onLogout }) {
                 </button>
               ))}
             </div>
-            <div className="wrapscroll daily-history">
+            <div
+              ref={dailyHistoryTableRef}
+              className="wrapscroll daily-history daily-history-full"
+            >
+              <div className="daily-history-month">
+                {formatMonthLabel(activeDailyBidMonth)}
+              </div>
               <table>
                 <thead>
                   <tr>
-                    <th style={{ width: "32%" }}>Date</th>
-                    <th className="r" style={{ width: "24%" }}>
-                      Total bids
+                    <th style={{ width: "48%" }}>Date</th>
+                    <th className="r" style={{ width: "32%" }}>
+                      Bids on that day
                     </th>
-                    <th className="c" style={{ width: "12%" }}>
+                    <th className="c" style={{ width: "20%" }}>
                       Edit
                     </th>
                   </tr>
@@ -749,7 +847,7 @@ function BidderDashboard({ user, onLogout }) {
                           )}
                         </td>
                       </tr>
-                    );
+                        );
                   })}
                 </tbody>
               </table>
@@ -806,7 +904,20 @@ function BidderDashboard({ user, onLogout }) {
           <span className="sec-num">04</span>
           <span className="sec-label">My entries</span>
         </div>
-        <h2 className="sec-title">Every client I responded to</h2>
+        <h2 className="sec-title" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Every client I responded to</span>
+          <select 
+            className="f slim" 
+            style={{ width: "auto", fontWeight: "normal", fontSize: "1rem", margin: 0 }}
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+          >
+            <option value="all">All time</option>
+            {rowMonths.map(m => (
+              <option key={m} value={m}>{formatMonthOption(m)}</option>
+            ))}
+          </select>
+        </h2>
         <div className="legend">
           <span className="lg">
             <span className="sw fresh"></span>Added this week
@@ -824,36 +935,230 @@ function BidderDashboard({ user, onLogout }) {
             <span className="dotc dead"></span>Post deleted or ended
           </span>
         </div>
+        <div style={{ marginBottom: "1rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <input
+              type="text"
+              className="f"
+              placeholder="Search client name..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ maxWidth: "300px" }}
+            />
+            {!isAdding && (
+              <button className="btn mini add-row" onClick={addRow} style={{ marginTop: 0 }}>
+                + Add a client
+              </button>
+            )}
+          </div>
         <div className="wrapscroll">
           <table>
             <thead>
               <tr>
-                <th style={{ width: "12%" }}>Date</th>
+                <th style={{ width: "10%" }}>Date</th>
                 <th style={{ width: "14%" }}>Client</th>
-                <th style={{ width: "18%" }}>Remarks</th>
-                <th className="c" style={{ width: "11%" }}>
+                <th style={{ width: "16%" }}>Remarks</th>
+                <th className="c" style={{ width: "10%" }}>
                   Type
                 </th>
-                <th className="r" style={{ width: "8%" }}>
+                <th className="r" style={{ width: "6%" }}>
+                  Hrs
+                </th>
+                <th className="r" style={{ width: "6%" }}>
+                  Amt/Hr
+                </th>
+                <th className="r" style={{ width: "7%" }}>
                   Budget
                 </th>
-                <th className="r" style={{ width: "8%" }}>
+                <th className="r" style={{ width: "7%" }}>
                   Quoted
                 </th>
-                <th className="c" style={{ width: "6%" }}>
+                <th className="c" style={{ width: "5%" }}>
                   Int.
                 </th>
-                <th className="c" style={{ width: "13%" }}>
+                <th className="c" style={{ width: "11%" }}>
                   Status
                 </th>
-                <th style={{ width: "7%" }}>TL note</th>
+                <th style={{ width: "5%" }}>TL note</th>
                 <th className="c" style={{ width: "3%" }}>
                   Edit
                 </th>
               </tr>
             </thead>
             <tbody>
-              {bidder.rows.map((r) => {
+              {isAdding && (
+                <tr className="draft-row fresh">
+                  <td>
+                    <input
+                      type="date"
+                      className="f"
+                      value={draftRow.createdAt}
+                      onChange={(e) =>
+                        setDraftRow({ ...draftRow, createdAt: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="f"
+                      placeholder="Client name *"
+                      list="client-suggestions"
+                      value={draftRow.client}
+                      onChange={(e) =>
+                        setDraftRow({ ...draftRow, client: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="f"
+                      placeholder="Remarks"
+                      value={draftRow.remarks}
+                      onChange={(e) =>
+                        setDraftRow({ ...draftRow, remarks: e.target.value })
+                      }
+                    />
+                  </td>
+                  <td className="c">
+                    <select
+                      className="f slim"
+                      value={draftRow.type}
+                      onChange={(e) =>
+                        setDraftRow({ ...draftRow, type: e.target.value })
+                      }
+                    >
+                      <option>Fixed</option>
+                      <option>Hourly</option>
+                      <option>Hourly bid, fixed quote</option>
+                    </select>
+                  </td>
+                  <td className="r">
+                    {draftRow.type === "Fixed" ? (
+                      <span className="muted-inline">-</span>
+                    ) : (
+                      <input
+                        className="f num"
+                        inputMode="decimal"
+                        placeholder="Hrs"
+                        value={draftRow.workedHours}
+                        onChange={(e) =>
+                          setDraftRow({
+                            ...draftRow,
+                            workedHours: decimalOnly(e.target.value),
+                          })
+                        }
+                      />
+                    )}
+                  </td>
+                  <td className="r">
+                    {draftRow.type === "Fixed" ? (
+                      <span className="muted-inline">-</span>
+                    ) : (
+                      <input
+                        className="f num"
+                        inputMode="decimal"
+                        placeholder="$/Hr"
+                        value={draftRow.amtPerHour}
+                        onChange={(e) =>
+                          setDraftRow({
+                            ...draftRow,
+                            amtPerHour: decimalOnly(e.target.value),
+                          })
+                        }
+                      />
+                    )}
+                  </td>
+                  <td className="r">
+                    <input
+                      className="f num"
+                      inputMode="decimal"
+                      placeholder="Budget"
+                      value={draftRow.budget}
+                      onChange={(e) =>
+                        setDraftRow({
+                          ...draftRow,
+                          budget: decimalOnly(e.target.value),
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="r">
+                    {draftRow.type === "Fixed" ? (
+                      <input
+                        className="f num"
+                        inputMode="decimal"
+                        placeholder="Quoted"
+                        value={draftRow.quoted}
+                        onChange={(e) =>
+                          setDraftRow({
+                            ...draftRow,
+                            quoted: decimalOnly(e.target.value),
+                          })
+                        }
+                      />
+                    ) : (
+                      <span className="muted-inline">-</span>
+                    )}
+                  </td>
+                  <td className="c">
+                    <input
+                      className="f cen"
+                      inputMode="numeric"
+                      placeholder="Int."
+                      value={draftRow.interviews}
+                      onChange={(e) =>
+                        setDraftRow({
+                          ...draftRow,
+                          interviews: integerOnly(e.target.value),
+                        })
+                      }
+                    />
+                  </td>
+                  <td className="c statcell">
+                    <select
+                      className={`f st-${statusClass(draftRow.status)}`}
+                      value={draftRow.status}
+                      onChange={(e) =>
+                        setDraftRow({ ...draftRow, status: e.target.value })
+                      }
+                    >
+                      <option>Open</option>
+                      <option>Converted</option>
+                      <option>Hired elsewhere</option>
+                      <option>Job post deleted</option>
+                      <option>Client ended conversation</option>
+                    </select>
+                  </td>
+                  <td className="readonly muted-inline">-</td>
+                  <td className="c row-actions">
+                    <div className="action-pair">
+                      <button
+                        className="icon-btn save"
+                        type="button"
+                        title="Save client"
+                        aria-label="Save client"
+                        onClick={saveRow}
+                        disabled={!draftRow.client.trim()}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M5 12.5l4 4L19 6.5" />
+                        </svg>
+                      </button>
+                      <button
+                        className="icon-btn cancel"
+                        type="button"
+                        title="Cancel add"
+                        aria-label="Cancel add"
+                        onClick={() => setIsAdding(false)}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {filteredRows.map((r) => {
                 const isEditing = editingRowId === r.id;
                 const row = isEditing ? editDraft : r;
 
@@ -862,11 +1167,25 @@ function BidderDashboard({ user, onLogout }) {
                     key={r.id}
                     className={r.wk >= data.state.weekNo ? "fresh" : "carried"}
                   >
-                    <td>{formatInsertedDate(r.createdAt)}</td>
+                    <td>
+                      {isEditing ? (
+                        <input
+                          type="date"
+                          className="f"
+                          value={row.createdAt ? rowDateKey(row.createdAt) : ""}
+                          onChange={(e) =>
+                            changeEditDraft("createdAt", e.target.value)
+                          }
+                        />
+                      ) : (
+                        formatInsertedDate(r.createdAt)
+                      )}
+                    </td>
                     <td>
                       {isEditing ? (
                         <input
                           className="f"
+                          list="client-suggestions"
                           value={row.client || ""}
                           onChange={(e) =>
                             changeEditDraft("client", e.target.value)
@@ -908,6 +1227,42 @@ function BidderDashboard({ user, onLogout }) {
                     </td>
                     <td className="r">
                       {isEditing ? (
+                        row.type === "Fixed" ? (
+                          <span className="muted-inline">-</span>
+                        ) : (
+                          <input
+                            className="f num"
+                            inputMode="decimal"
+                            value={row.workedHours || ""}
+                            onChange={(e) =>
+                              changeEditDraft("workedHours", decimalOnly(e.target.value))
+                            }
+                          />
+                        )
+                      ) : (
+                        r.type === "Fixed" ? <span className="muted-inline">-</span> : renderText(r.workedHours)
+                      )}
+                    </td>
+                    <td className="r">
+                      {isEditing ? (
+                        row.type === "Fixed" ? (
+                          <span className="muted-inline">-</span>
+                        ) : (
+                          <input
+                            className="f num"
+                            inputMode="decimal"
+                            value={row.amtPerHour || ""}
+                            onChange={(e) =>
+                              changeEditDraft("amtPerHour", decimalOnly(e.target.value))
+                            }
+                          />
+                        )
+                      ) : (
+                        r.type === "Fixed" ? <span className="muted-inline">-</span> : renderText(r.amtPerHour)
+                      )}
+                    </td>
+                    <td className="r">
+                      {isEditing ? (
                         <input
                           className="f num"
                           inputMode="decimal"
@@ -922,14 +1277,18 @@ function BidderDashboard({ user, onLogout }) {
                     </td>
                     <td className="r">
                       {isEditing ? (
-                        <input
-                          className="f num"
-                          inputMode="decimal"
-                          value={row.quoted || ""}
-                          onChange={(e) =>
-                            changeEditDraft("quoted", decimalOnly(e.target.value))
-                          }
-                        />
+                        row.type === "Fixed" ? (
+                          <input
+                            className="f num"
+                            inputMode="decimal"
+                            value={row.quoted || ""}
+                            onChange={(e) =>
+                              changeEditDraft("quoted", decimalOnly(e.target.value))
+                            }
+                          />
+                        ) : (
+                          <span className="muted-inline">{row.quoted || "-"}</span>
+                        )
                       ) : (
                         renderText(r.quoted)
                       )}
@@ -1019,129 +1378,7 @@ function BidderDashboard({ user, onLogout }) {
                   </tr>
                 );
               })}
-              {isAdding && (
-                <tr className="draft-row fresh">
-                  <td>{currentInsertedDate}</td>
-                  <td>
-                    <input
-                      className="f"
-                      placeholder="Client name *"
-                      value={draftRow.client}
-                      onChange={(e) =>
-                        setDraftRow({ ...draftRow, client: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="f"
-                      placeholder="Remarks"
-                      value={draftRow.remarks}
-                      onChange={(e) =>
-                        setDraftRow({ ...draftRow, remarks: e.target.value })
-                      }
-                    />
-                  </td>
-                  <td className="c">
-                    <select
-                      className="f slim"
-                      value={draftRow.type}
-                      onChange={(e) =>
-                        setDraftRow({ ...draftRow, type: e.target.value })
-                      }
-                    >
-                      <option>Fixed</option>
-                      <option>Hourly</option>
-                      <option>Hourly bid, fixed quote</option>
-                    </select>
-                  </td>
-                  <td className="r">
-                    <input
-                      className="f num"
-                      inputMode="decimal"
-                      placeholder="Budget"
-                      value={draftRow.budget}
-                      onChange={(e) =>
-                        setDraftRow({
-                          ...draftRow,
-                          budget: decimalOnly(e.target.value),
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="r">
-                    <input
-                      className="f num"
-                      inputMode="decimal"
-                      placeholder="Quoted"
-                      value={draftRow.quoted}
-                      onChange={(e) =>
-                        setDraftRow({
-                          ...draftRow,
-                          quoted: decimalOnly(e.target.value),
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="c">
-                    <input
-                      className="f cen"
-                      inputMode="numeric"
-                      placeholder="Int."
-                      value={draftRow.interviews}
-                      onChange={(e) =>
-                        setDraftRow({
-                          ...draftRow,
-                          interviews: integerOnly(e.target.value),
-                        })
-                      }
-                    />
-                  </td>
-                  <td className="c statcell">
-                    <select
-                      className={`f st-${statusClass(draftRow.status)}`}
-                      value={draftRow.status}
-                      onChange={(e) =>
-                        setDraftRow({ ...draftRow, status: e.target.value })
-                      }
-                    >
-                      <option>Open</option>
-                      <option>Converted</option>
-                      <option>Hired elsewhere</option>
-                      <option>Job post deleted</option>
-                      <option>Client ended conversation</option>
-                    </select>
-                  </td>
-                  <td className="readonly muted-inline">-</td>
-                  <td className="c row-actions">
-                    <div className="action-pair">
-                      <button
-                        className="icon-btn save"
-                        type="button"
-                        title="Save client"
-                        aria-label="Save client"
-                        onClick={saveRow}
-                        disabled={!draftRow.client.trim()}
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M5 12.5l4 4L19 6.5" />
-                        </svg>
-                      </button>
-                      <button
-                        className="icon-btn cancel"
-                        type="button"
-                        title="Cancel add"
-                        aria-label="Cancel add"
-                        onClick={() => setIsAdding(false)}
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />
-                        </svg>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
+              
             </tbody>
           </table>
         </div>

@@ -618,7 +618,7 @@ select.f {
 
 .daily-bids-panel {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(380px, 1.35fr) repeat(3, minmax(0, 1fr));
   border: 1px solid var(--rule);
   margin-bottom: 28px;
 }
@@ -671,13 +671,20 @@ select.f {
 }
 .daily-today-row {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) 52px auto;
+  grid-template-columns: minmax(142px, 1fr) minmax(64px, auto) minmax(82px, auto);
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-width: 0;
 }
+.daily-date-input {
+  width: 100%;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 7px 8px;
+}
 .daily-count-input {
-  width: 52px;
+  width: 64px;
   max-width: none;
   font-size: 27px;
   font-weight: 600;
@@ -687,7 +694,7 @@ select.f {
   padding: 0 2px 3px;
 }
 .daily-count-display {
-  min-width: 52px;
+  min-width: 64px;
   font-size: 27px;
   line-height: 1;
   font-weight: 600;
@@ -706,6 +713,10 @@ select.f {
   flex: 0 0 auto;
   justify-content: flex-end;
   min-width: 0;
+}
+.daily-today-actions .btn.mini {
+  min-width: 76px;
+  text-align: center;
 }
 .daily-total-value {
   margin-top: 4px;
@@ -800,7 +811,18 @@ select.f {
   margin: 0 0 12px;
 }
 .daily-history {
-  max-width: 620px;
+  max-width: 100%;
+}
+.daily-history-full table {
+  width: 100%;
+}
+.daily-history-month {
+  margin: 0 0 10px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--grey);
+  font-weight: 700;
 }
 .daily-empty {
   margin-top: 22px;
@@ -867,6 +889,11 @@ th {
   padding: 0 12px 11px 0;
   border-bottom: 1px solid var(--ink);
   vertical-align: bottom;
+  position: sticky;
+  top: 68px;
+  background: var(--paper);
+  z-index: 50;
+  box-shadow: inset 0 -2px 0 var(--ink);
 }
 th.r {
   text-align: right;
@@ -939,7 +966,7 @@ th:last-child {
   margin-top: 14px;
 }
 .wrapscroll {
-  overflow-x: auto;
+  /* Removed overflow-x: auto on desktop so sticky headers work */
 }
 .row-actions {
   white-space: nowrap;
@@ -1590,6 +1617,15 @@ tr.fresh td.rownum::after {
   }
   .daily-today {
     flex-wrap: wrap;
+  }
+  .daily-today-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .daily-date-input {
+    grid-column: 1 / -1;
+  }
+  .daily-today-actions {
+    justify-content: flex-start;
   }
   .stat,
   .fu-s {

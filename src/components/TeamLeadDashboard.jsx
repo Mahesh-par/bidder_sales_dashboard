@@ -331,7 +331,8 @@ function TeamLeadDashboard({ user, onLogout }) {
     return `${year}-${month}-${day}`;
   };
   const isRowInDateRange = (row) => {
-    const key = rowDateKey(row.createdAt);
+    const dateToUse = (row.status === 'Converted' && row.convertedOn) ? row.convertedOn : row.createdAt;
+    const key = rowDateKey(dateToUse);
     if (!key) return false;
     if (startDate && key < startDate) return false;
     if (endDate && key > endDate) return false;
@@ -913,19 +914,20 @@ function TeamLeadDashboard({ user, onLogout }) {
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: "12%" }}>Date</th>
-                  <th style={{ width: "18%" }}>Client</th>
-                  <th style={{ width: "12%" }}>Bidder</th>
-                  <th style={{ width: "26%" }}>Remarks</th>
-                  <th className="r" style={{ width: "10%" }}>
+                  <th style={{ width: "10%" }}>Date</th>
+                  <th style={{ width: "15%" }}>Client</th>
+                  <th style={{ width: "10%" }}>Bidder</th>
+                  <th style={{ width: "23%" }}>Remarks</th>
+                  <th className="r" style={{ width: "9%" }}>
                     Worth
                   </th>
-                  <th className="c" style={{ width: "8%" }}>
+                  <th className="c" style={{ width: "6%" }}>
                     Int.
                   </th>
-                  <th className="c" style={{ width: "14%" }}>
+                  <th className="c" style={{ width: "12%" }}>
                     Status
                   </th>
+                  <th style={{ width: "15%" }}>Converted On</th>
                 </tr>
               </thead>
               <tbody>
@@ -943,6 +945,7 @@ function TeamLeadDashboard({ user, onLogout }) {
                       <td className="c">
                         <span className="status-text st-won">{r.status}</span>
                       </td>
+                      <td>{formatInsertedDate(r.convertedOn)}</td>
                     </tr>
                   );
                 })}
